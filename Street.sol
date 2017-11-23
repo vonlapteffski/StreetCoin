@@ -3,7 +3,7 @@ pragma solidity ^0.4.0;
 contract owned {
     address public owner;
 
-    function owned() {
+    function owned() public {
         owner = msg.sender;
     }
 
@@ -22,26 +22,26 @@ contract Street is owned {
     uint256 public sellPrice;
     uint256 public buyPrice;
     uint256 public totalSupply;
+    uint256 public serialNumber = 0;
     uint8 public decimals;
     uint minBalanceForAccounts;
     string public name = 'Street';
     string public symbol = 'STRT';
-
-    address[] public pubContracts;                             // Addresses of PublishContracts
 
     event Transfer(address indexed from, address indexed to, uint256 amount);   //Transfer Event
     event FrozenFunds(address target, bool frozen);
 
     mapping (address => uint256) public balanceOf;
     mapping (address => bool) public frozenAccount;
+    mapping (uint256 => address) public pubContracts;   // Serial number of pubContract => his address
 
-    function Street(uint256 initialSupply, uint8 decimalUnits) { //Constructor
+    function Street(uint256 initialSupply, uint8 decimalUnits) public { //Constructor
         totalSupply = initialSupply;
         balanceOf[msg.sender] = initialSupply;          // All tokens to creator
         decimals = decimalUnits;
     }
 
-    function transfer(address _to, uint256 _amount) {    // Transfer tokens
+    function transfer(address _to, uint256 _amount) public {    // Transfer tokens
 
         require (balanceOf[msg.sender] >= _amount);      // Check if sender has enough
         require (balanceOf[_to] + _amount >= balanceOf[_to]);// Check for overflow
@@ -74,7 +74,7 @@ contract Street is owned {
         return true;
     }
 
-    function buy() payable returns (uint amount) {
+    function buy() public payable returns (uint amount) {
         amount = msg.value / buyPrice;                   // Calculates the amount
         require (balanceOf[this] >= amount);             // Check if it has enough to sell
 
@@ -84,7 +84,7 @@ contract Street is owned {
         return amount;
     }
 
-    function sell(uint amount) returns (uint revenue) {
+    function sell(uint amount) public returns (uint revenue) {
         require (balanceOf[msg.sender] >= amount);       // Check if the sender has enough
 
         balanceOf[this] += amount;                       // Adds to contract balance
@@ -96,34 +96,36 @@ contract Street is owned {
         return revenue;
     }
 
-    function publish(address whoPub, uint256 howMuch, string whatPub, uint64[] wherePub) {
+    function publish(address whoPub, uint256 howMuch, string whatPub, uint64[] wherePub) public
+                                                        returns (address, uint256) {
         require(_transfer(msg.sender, this, howMuch));   // Check for succesful transaction
 
-        address newPubContract = new Publish(whoPub, howMuch, whatPub, wherePub);
-        pubContracts.push(newPubContract);
+        address newPubContract = new Publish(msg.sender, whoPub, howMuch, whatPub, wherePub);
+        pubContracts[serialNumber++] = newPubContract;
         _transfer(this, newPubContract, howMuch);
+        return (newPubContract, serialNumber);
     }
 
 //-------------------------------------------------------------------------------------------------
 // Admin methods
-    function mintToken(address target, uint256 mintedAmount) onlyOwner {
+    function mintToken(address target, uint256 mintedAmount) public onlyOwner {
         balanceOf[target] += mintedAmount;
         totalSupply += mintedAmount;
         Transfer(0, owner, mintedAmount);                // Events
         Transfer(owner, target, mintedAmount);           // Events
     }
 
-    function freezeAccount(address target, bool freeze) onlyOwner {
+    function freezeAccount(address target, bool freeze) public onlyOwner {
         frozenAccount[target] = freeze;
         FrozenFunds(target, freeze);
     }
 
-    function setPrices(uint256 newSellPrice, uint256 newBuyPrice) onlyOwner {
+    function setPrices(uint256 newSellPrice, uint256 newBuyPrice) public onlyOwner {
         sellPrice = newSellPrice;
         buyPrice = newBuyPrice;
     }
 
-    function setMinBalance(uint minimumBalanceInFinney) onlyOwner {
+    function setMinBalance(uint minimumBalanceInFinney) public onlyOwner {
         minBalanceForAccounts = minimumBalanceInFinney * 1 finney;
     }
 //-------------------------------------------------------------------------------------------------
@@ -140,9 +142,9 @@ contract Publish {
     //string nodeAddr;                                // Node address in IPFS
     bool _approvedByPublisher = false;
 
-    function Publish(address whoPub, uint256 howMuch, string whatPub, uint64[] wherePub) {
+    function Publish(address whoPay, address whoPub, uint256 howMuch, string whatPub, uint64[] wherePub) public {
         parent = Street(msg.sender);
-        advertiser = msg.sender;                      // Advertiser calls the contract
+        advertiser = whoPay;                          // Advertiser calls the contract
         publisher = whoPub;
         cost = howMuch;
         tempAdNode = wherePub;
@@ -159,7 +161,7 @@ contract Publish {
         adNode = tempAdNode;                          // Now nodes know that they should download
     }
 
-    function approvingByPublisher() {                 // Publisher approve contract
+    function approvingByPublisher() public {                 // Publisher approve contract
         require (msg.sender == publisher);            // Only publisher can do this
         require (_approvedByPublisher == false);      // Call only once
 
@@ -167,7 +169,7 @@ contract Publish {
         _begin();
     }
 
-    function rejectingByPublisher() {                 // Publisher reject contract
+    function rejectingByPublisher() public {                 // Publisher reject contract
             require (msg.sender == publisher);        // Only publisher can do this
             require (_approvedByPublisher == false);  // Call only once
 
@@ -175,7 +177,7 @@ contract Publish {
             _suicide();
         }
 
-    function closeContract() {
+    function closeContract() public {
         require(true);                                // Check for closing contract conditions (i.e. time, other...)
 
         parent.transfer(publisher, cost);             // Payment for services
